@@ -7,7 +7,6 @@ use std::sync::mpsc;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::TryRecvError;
 use std::{thread};
-
 fn main() {
     let mut raw_filename = String::new();
     let args: Vec<String> = std::env::args().collect();
@@ -33,7 +32,7 @@ fn main() {
     }
 
     // Initialize file reader
-    let filename = format!("/Users/ianlin/Desktop/Hymn-Player/hymns/{}.mp3", format!("{:0>3}", &raw_filename[..]));
+    let filename = format!("./hymns/{}.mp3", format!("{:0>3}", &raw_filename[..]));
     println!("{}", filename);
     let mut f = File::open(&filename).expect("file not found");
     let metadata = std::fs::metadata(&filename).expect("cannot read file metadata");
@@ -100,7 +99,6 @@ fn spawn_stdin_channel() -> Receiver<String> {
     });
     rx
 }
-
 
 /*
 \TODO:
