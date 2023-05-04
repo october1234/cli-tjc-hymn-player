@@ -2,17 +2,24 @@ use soloud::*;
 use std::io;
 use std::fs::File;
 use std::io::Read;
+use std;
 
 fn main() {
-    // Read fine name
-    let mut stdin_buffer = String::new();
-    io::stdin().read_line(&mut stdin_buffer).expect("cannot read file name from stdin");
-    stdin_buffer.pop();
+    let mut raw_filename = String::new();
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 {
+        // Read filename from args
+        raw_filename = args[1].parse().expect("Cannot parse arguments");
+    } else {
+        // Read fine name from stdin
+        io::stdin().read_line(&mut raw_filename).expect("cannot read file name from stdin");
+        raw_filename.pop();
+    }
 
     // Check if hymn number is valid
-    let hymn_no_result = stdin_buffer.parse::<i32>();
+    let hymn_no_result = raw_filename.parse::<i32>();
     if hymn_no_result.is_err() {
-        println!("invaid hymn number: {}", stdin_buffer);
+        println!("invaid hymn number: {}", raw_filename);
         return;
     }
     let hymn_int = hymn_no_result.unwrap();
@@ -22,7 +29,7 @@ fn main() {
     }
 
     // Initialize file reader
-    let filename = format!("/Users/ianlin/Desktop/Hymn-Player/hymns/{}.mp3", format!("{:0>3}", &stdin_buffer[..]));
+    let filename = format!("/Users/ianlin/Desktop/Hymn-Player/hymns/{}.mp3", format!("{:0>3}", &raw_filename[..]));
     println!("{}", filename);
     let mut f = File::open(&filename).expect("file not found");
     let metadata = std::fs::metadata(&filename).expect("cannot read file metadata");
@@ -70,6 +77,8 @@ fn main() {
         }
     }
 }
+
+
 
 
 /*
