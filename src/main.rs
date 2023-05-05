@@ -1,13 +1,6 @@
 use soloud::*;
-use tui::layout::Alignment;
-use tui::style::{Style, Color, Modifier};
-use tui::symbols;
-use tui::text::{Spans, Span};
-use tui::widgets::{Gauge, LineGauge, Paragraph, Wrap, List, ListItem};
-use std;
 use std::{
     io, thread,
-    time::Duration,
     fs::File,
     io::Read,
     sync::mpsc,
@@ -16,14 +9,18 @@ use std::{
 };
 use tui::{
     backend::CrosstermBackend,
-    widgets::{Widget, Block, Borders},
+    widgets::{Block, Borders, LineGauge, Paragraph, Wrap},
     layout::{Layout, Constraint, Direction},
-    Terminal
+    style::{Style, Color, Modifier},
+    text::{Spans, Span},
+    layout::Alignment,
+    Terminal,
+    symbols,
 };
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
-    execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    execute,
 };
 
 fn main() -> Result<(), io::Error> {
@@ -64,10 +61,10 @@ fn main() -> Result<(), io::Error> {
     wav.load_mem(&buffer).unwrap();
     let handle = sl.play(&wav);
 
-    // Initialize stdin channel
+    // Initialize command channel
     let command_channel = spawn_command_channel();
 
-
+    // Initialize TUI
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -76,86 +73,93 @@ fn main() -> Result<(), io::Error> {
 
     // Start playing
     while sl.voice_count() > 0 {
-
-        let commands_info_text = vec![
-            Spans::from(vec![
-                Span::styled("p: ",Style::default().fg(Color::LightMagenta)),
-                Span::raw("pause / resume."),
-            ]),
-            Spans::from(vec![
-                Span::styled("l: ",Style::default().fg(Color::LightMagenta)),
-                Span::raw("toggles looping."),
-            ]),
-            Spans::from(vec![
-                Span::styled("V: ",Style::default().fg(Color::LightMagenta)),
-                Span::raw("increase volume."),
-            ]),
-            Spans::from(vec![
-                Span::styled("v: ",Style::default().fg(Color::LightMagenta)),
-                Span::raw("decrease volume."),
-            ]),
-            Spans::from(vec![
-                Span::styled("j: ",Style::default().fg(Color::LightMagenta)),
-                Span::raw("skip 5 seconds backwards."),
-            ]),
-            Spans::from(vec![
-                Span::styled("k: ",Style::default().fg(Color::LightMagenta)),
-                Span::raw("skip 5 seconds forwards."),
-            ]),
-            Spans::from(vec![
-                Span::styled("q: ",Style::default().fg(Color::LightMagenta)),
-                Span::raw("quit."),
-            ])
-        ];
-        let stats_text = vec![
-            Spans::from(vec![
-                Span::styled("time elapsed: ",Style::default().fg(Color::LightMagenta)),
-                Span::raw("00:00"),
-            ]),
-            Spans::from(vec![
-                Span::styled("looping:      ",Style::default().fg(Color::LightMagenta)),
-                Span::raw(if sl.looping(handle) {"yes"} else {"no"}),
-            ]),
-            Spans::from(vec![
-                Span::styled("paused:       ",Style::default().fg(Color::LightMagenta)),
-                Span::raw(if sl.pause(handle) {"yes"} else {"no"}),
-            ]),
-            Spans::from(vec![
-                Span::styled("progress:     ",Style::default().fg(Color::LightMagenta)),
-                Span::raw("00:00 / 00:00"),
-            ]),
-        ];
-        let commands_info = Paragraph::new(commands_info_text)
-        .block(Block::default().title("Commands :").borders(Borders::NONE))
-        .style(Style::default().fg(Color::LightCyan))
-        .alignment(Alignment::Left)
-        .wrap(Wrap { trim: false });
-        let stats = Paragraph::new(stats_text)
-        .block(Block::default().title("Info :").borders(Borders::NONE))
-        .style(Style::default().fg(Color::LightCyan))
-        .alignment(Alignment::Left)
-        .wrap(Wrap { trim: false });
-
-        let frame = Block::default()
-        .title(format!(" Hymn Player: playing hymn {} ", hymn_int))
-        .style(
-            Style::default()
-            .fg(Color::LightCyan)
-        )
-        .borders(Borders::ALL);
-
-        let player_progress = LineGauge::default()
-        .block(Block::default().borders(Borders::ALL).title(" Player progress "))
-        .gauge_style(
-            Style::default()
-            .fg(Color::Magenta)
-            .bg(Color::Cyan)
-            .add_modifier(Modifier::BOLD)
-        )
-        .line_set(symbols::line::THICK)
-        .ratio(sl.stream_position(handle) / wav.length());
-
+        // Draws the TUI
         terminal.draw(|f| {
+
+            // The frame and the title
+            let frame = Block::default()
+            .title(format!(" Hymn Player: playing hymn {} ", hymn_int))
+            .style(
+                Style::default()
+                .fg(Color::LightCyan)
+            )
+            .borders(Borders::ALL);
+
+            // The command descriptions
+            let commands_info_text = vec![
+                Spans::from(vec![
+                    Span::styled("p: ",Style::default().fg(Color::LightMagenta)),
+                    Span::raw("pause / resume."),
+                ]),
+                Spans::from(vec![
+                    Span::styled("l: ",Style::default().fg(Color::LightMagenta)),
+                    Span::raw("toggles looping."),
+                ]),
+                Spans::from(vec![
+                    Span::styled("V: ",Style::default().fg(Color::LightMagenta)),
+                    Span::raw("increase volume."),
+                ]),
+                Spans::from(vec![
+                    Span::styled("v: ",Style::default().fg(Color::LightMagenta)),
+                    Span::raw("decrease volume."),
+                ]),
+                Spans::from(vec![
+                    Span::styled("j: ",Style::default().fg(Color::LightMagenta)),
+                    Span::raw("skip 5 seconds backwards."),
+                ]),
+                Spans::from(vec![
+                    Span::styled("k: ",Style::default().fg(Color::LightMagenta)),
+                    Span::raw("skip 5 seconds forwards."),
+                ]),
+                Spans::from(vec![
+                    Span::styled("q: ",Style::default().fg(Color::LightMagenta)),
+                    Span::raw("quit."),
+                ])
+            ];
+            let commands_info = Paragraph::new(commands_info_text)
+            .block(Block::default().title("Commands :").borders(Borders::NONE))
+            .style(Style::default().fg(Color::LightCyan))
+            .alignment(Alignment::Left)
+            .wrap(Wrap { trim: false });
+
+            // The stats on the right
+            let stats_text = vec![
+                Spans::from(vec![
+                    Span::styled("time elapsed: ",Style::default().fg(Color::LightMagenta)),
+                    Span::raw("00:00"),
+                ]),
+                Spans::from(vec![
+                    Span::styled("looping:      ",Style::default().fg(Color::LightMagenta)),
+                    Span::raw(if sl.looping(handle) {"yes"} else {"no"}),
+                ]),
+                Spans::from(vec![
+                    Span::styled("paused:       ",Style::default().fg(Color::LightMagenta)),
+                    Span::raw(if sl.pause(handle) {"yes"} else {"no"}),
+                ]),
+                Spans::from(vec![
+                    Span::styled("progress:     ",Style::default().fg(Color::LightMagenta)),
+                    Span::raw("00:00 / 00:00"),
+                ]),
+            ];
+            let stats = Paragraph::new(stats_text)
+            .block(Block::default().title("Info :").borders(Borders::NONE))
+            .style(Style::default().fg(Color::LightCyan))
+            .alignment(Alignment::Left)
+            .wrap(Wrap { trim: false });
+
+            // The progress bar
+            let player_progress = LineGauge::default()
+            .block(Block::default().borders(Borders::ALL).title(" Player progress "))
+            .gauge_style(
+                Style::default()
+                .fg(Color::Magenta)
+                .bg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+            )
+            .line_set(symbols::line::THICK)
+            .ratio(sl.stream_position(handle) / wav.length());
+
+            // The Vertical Layout
             let chunks = Layout::default()
             .direction(Direction::Vertical)
             .margin(1)
@@ -167,6 +171,7 @@ fn main() -> Result<(), io::Error> {
             )
             .split(f.size());
 
+            // The Horizontal Layout
             let info = Layout::default()
             .direction(Direction::Horizontal)
             .margin(0)
@@ -178,10 +183,10 @@ fn main() -> Result<(), io::Error> {
             )
             .split(chunks[0]);
 
+            // Rendering and placing the stuff
             f.render_widget(frame, f.size());
             f.render_widget(commands_info, info[0]);
             f.render_widget(stats, info[1]);
-            // f.render_widget(list, chunks[0]);
             f.render_widget(player_progress, chunks[1]);
         })?;
 
@@ -192,8 +197,6 @@ fn main() -> Result<(), io::Error> {
             Err(TryRecvError::Empty) => {},
             Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
         }
-        // // Remove \n from command
-        // command.pop();
         if command == KeyCode::Char('p') {
             if sl.pause(handle) {
                 sl.set_pause(handle, false);
@@ -229,6 +232,12 @@ fn main() -> Result<(), io::Error> {
     Ok(())
 }
 
+/*
+    Spawns a thread that listens to the command key presses
+    If the command listening code is not asynchronous,
+    the TUI rendering code will block the command listening code,
+    thus causing the command to only trigger sometimes.
+*/
 fn spawn_command_channel() -> Receiver<KeyCode> {
     let (tx, rx) = mpsc::channel::<KeyCode>();
     thread::spawn(move || loop {
@@ -240,6 +249,7 @@ fn spawn_command_channel() -> Receiver<KeyCode> {
     rx
 }
 
+// Close TUI at the end of the program
 fn close_tui(mut terminal: Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), io::Error> {
     // restore terminal
     disable_raw_mode()?;
