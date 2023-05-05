@@ -1,34 +1,51 @@
 use soloud::*;
-use std::io;
-use std::fs::File;
-use std::io::Read;
+use tui::layout::Alignment;
+use tui::style::{Style, Color, Modifier};
+use tui::symbols;
+use tui::text::{Spans, Span};
+use tui::widgets::{Gauge, LineGauge, Paragraph, Wrap, List, ListItem};
 use std;
-use std::sync::mpsc;
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::TryRecvError;
-use std::{thread};
-fn main() {
-    let mut raw_filename = String::new();
+use std::{
+    io, thread,
+    time::Duration,
+    fs::File,
+    io::Read,
+    sync::mpsc,
+    sync::mpsc::Receiver,
+    sync::mpsc::TryRecvError
+};
+use tui::{
+    backend::CrosstermBackend,
+    widgets::{Widget, Block, Borders},
+    layout::{Layout, Constraint, Direction},
+    Terminal
+};
+use crossterm::{
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
+
+fn main() -> Result<(), io::Error> {
+    // Get raw hymn number
+    let raw_filename;
     let args: Vec<String> = std::env::args().collect();
     if args.len() > 1 {
-        // Read filename from args
         raw_filename = args[1].parse().expect("Cannot parse arguments");
     } else {
-        // Read fine name from stdin
-        io::stdin().read_line(&mut raw_filename).expect("cannot read file name from stdin");
-        raw_filename.pop();
+        raw_filename = String::from("1");
     }
 
     // Check if hymn number is valid
     let hymn_no_result = raw_filename.parse::<i32>();
     if hymn_no_result.is_err() {
         println!("invaid hymn number: {}", raw_filename);
-        return;
+        return Ok(());
     }
     let hymn_int = hymn_no_result.unwrap();
     if hymn_int < 0 || hymn_int > 470 {
         println!("invaid hymn number: {}", hymn_int);
-        return;
+        return Ok(());
     }
 
     // Initialize file reader
@@ -47,60 +64,174 @@ fn main() {
     wav.load_mem(&buffer).unwrap();
     let handle = sl.play(&wav);
 
+    // Initialize stdin channel
     let stdin_channel = spawn_stdin_channel();
+
+
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    // Start playing
     while sl.voice_count() > 0 {
-        std::thread::sleep(std::time::Duration::from_millis(100));
 
-        // TODO: make this non-blocking
-        // let mut stdin_buffer = String::new();
-        // io::stdin().read_line(&mut stdin_buffer).expect("cannot read command from stdin");
-        // stdin_buffer.pop();
+        let commands_info_text = vec![
+            Spans::from(vec![
+                Span::styled("p: ",Style::default().fg(Color::LightMagenta)),
+                Span::raw("pause / resume."),
+            ]),
+            Spans::from(vec![
+                Span::styled("l: ",Style::default().fg(Color::LightMagenta)),
+                Span::raw("toggles looping."),
+            ]),
+            Spans::from(vec![
+                Span::styled("V: ",Style::default().fg(Color::LightMagenta)),
+                Span::raw("increase volume."),
+            ]),
+            Spans::from(vec![
+                Span::styled("v: ",Style::default().fg(Color::LightMagenta)),
+                Span::raw("decrease volume."),
+            ]),
+            Spans::from(vec![
+                Span::styled("j: ",Style::default().fg(Color::LightMagenta)),
+                Span::raw("skip 5 seconds backwards."),
+            ]),
+            Spans::from(vec![
+                Span::styled("k: ",Style::default().fg(Color::LightMagenta)),
+                Span::raw("skip 5 seconds forwards."),
+            ]),
+            Spans::from(vec![
+                Span::styled("q: ",Style::default().fg(Color::LightMagenta)),
+                Span::raw("quit."),
+            ])
+        ];
+        let stats_text = vec![
+            Spans::from(vec![
+                Span::styled("time elapsed: ",Style::default().fg(Color::LightMagenta)),
+                Span::raw("00:00"),
+            ]),
+            Spans::from(vec![
+                Span::styled("looping:      ",Style::default().fg(Color::LightMagenta)),
+                Span::raw(if sl.looping(handle) {"yes"} else {"no"}),
+            ]),
+            Spans::from(vec![
+                Span::styled("paused:       ",Style::default().fg(Color::LightMagenta)),
+                Span::raw(if sl.pause(handle) {"yes"} else {"no"}),
+            ]),
+            Spans::from(vec![
+                Span::styled("progress:     ",Style::default().fg(Color::LightMagenta)),
+                Span::raw("00:00 / 00:00"),
+            ]),
+        ];
+        let commands_info = Paragraph::new(commands_info_text)
+        .block(Block::default().title("Commands :").borders(Borders::NONE))
+        .style(Style::default().fg(Color::LightCyan))
+        .alignment(Alignment::Left)
+        .wrap(Wrap { trim: false });
+        let stats = Paragraph::new(stats_text)
+        .block(Block::default().title("Info :").borders(Borders::NONE))
+        .style(Style::default().fg(Color::LightCyan))
+        .alignment(Alignment::Left)
+        .wrap(Wrap { trim: false });
 
-        let mut command: String = String::new();
-        match stdin_channel.try_recv() {
-            Ok(s) => command = s,
-            Err(TryRecvError::Empty) => {},
-            Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
-        }
-        command.pop();
+        let frame = Block::default()
+        .title(format!(" Hymn Player: playing hymn {} ", hymn_int))
+        .style(
+            Style::default()
+            .fg(Color::LightCyan)
+        )
+        .borders(Borders::ALL);
 
-        if command == String::from("p") {
-            if sl.pause(handle) {
-                sl.set_pause(handle, false);
-                println!("Resumed!");
-            } else {
-                sl.set_pause(handle, true);
-                println!("Paused!");
+        let player_progress = LineGauge::default()
+        .block(Block::default().borders(Borders::ALL).title(" Player progress "))
+        .gauge_style(
+            Style::default()
+            .fg(Color::Magenta)
+            .bg(Color::Cyan)
+            .add_modifier(Modifier::BOLD)
+        )
+        .line_set(symbols::line::THICK)
+        .ratio(sl.stream_position(handle) / wav.length());
+
+        terminal.draw(|f| {
+            let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints(
+                [
+                    Constraint::Percentage(80),
+                    Constraint::Percentage(20)
+                ].as_ref()
+            )
+            .split(f.size());
+
+            let info = Layout::default()
+            .direction(Direction::Horizontal)
+            .margin(0)
+            .constraints(
+                [
+                    Constraint::Percentage(60),
+                    Constraint::Percentage(40)
+                ].as_ref()
+            )
+            .split(chunks[0]);
+
+            f.render_widget(frame, f.size());
+            f.render_widget(commands_info, info[0]);
+            f.render_widget(stats, info[1]);
+            // f.render_widget(list, chunks[0]);
+            f.render_widget(player_progress, chunks[1]);
+        })?;
+
+        if let Event::Key(key) = event::read()? {
+            let command = key.code;
+            if command == KeyCode::Char('p') {
+                if sl.pause(handle) {
+                    sl.set_pause(handle, false);
+                } else {
+                    sl.set_pause(handle, true);
+                }
+            }
+            if command == KeyCode::Char('l') {
+                if sl.looping(handle) {
+                    sl.set_looping(handle, false);
+                } else {
+                    sl.set_looping(handle, true);
+                }
+            }
+            if command == KeyCode::Char('V') {
+                sl.set_volume(handle, sl.volume(handle) + 0.5f32);
+            }
+            if command == KeyCode::Char('v') {
+                sl.set_volume(handle, sl.volume(handle) - 0.5f32);
+            }
+            if command == KeyCode::Char('j') && sl.stream_position(handle) - 5.0f64 > 0f64 {
+                if sl.seek(handle, sl.stream_position(handle) - 5.0f64).is_err() {}
+            }
+            if command == KeyCode::Char('k') && sl.stream_position(handle) + 5.0f64 < wav.length() {
+                if sl.seek(handle, sl.stream_position(handle) + 5.0f64).is_err() {}
+            }
+            if command == KeyCode::Char('q') {
+                return Ok(())
             }
         }
-        if command == String::from("l") {
-            if sl.looping(handle) {
-                sl.set_looping(handle, false);
-                println!("Stopped Looping!");
-            } else {
-                sl.set_looping(handle, true);
-                println!("Looping!");
-            }
-        }
-        if command == String::from("V") {
-            sl.set_volume(handle, sl.volume(handle) + 0.5f32);
-        }
-        if command == String::from("v") {
-            sl.set_volume(handle, sl.volume(handle) - 0.5f32);
-        }
-        if command == String::from("j") && sl.stream_position(handle) - 5.0f64 > 0f64 {
-            println!("Skipping 5 seconds backward ...");
-            if sl.seek(handle, sl.stream_position(handle) - 5.0f64).is_err() {
-                println!("Cannot skip 5 seconds backward");
-            }
-        }
-        if command == String::from("k") && sl.stream_position(handle) + 5.0f64 < wav.length() {
-            println!("Skipping 5 seconds forward ...");
-            if sl.seek(handle, sl.stream_position(handle) + 5.0f64).is_err() {
-                println!("Cannot skip 5 seconds forward");
-            }
-        }
+
+        // // Read command from channel
+        // let mut command: String = String::new();
+        // match stdin_channel.try_recv() {
+        //     Ok(s) => command = s,
+        //     Err(TryRecvError::Empty) => {},
+        //     Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
+        // }
+        // // Remove \n from command
+        // command.pop();
+
     }
+
+    close_tui(terminal).expect("Failed to close TUI");
+    Ok(())
 }
 
 fn spawn_stdin_channel() -> Receiver<String> {
@@ -113,6 +244,17 @@ fn spawn_stdin_channel() -> Receiver<String> {
     rx
 }
 
+fn close_tui(mut terminal: Terminal<CrosstermBackend<io::Stdout>>) -> Result<(), io::Error> {
+    // restore terminal
+    disable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
+    terminal.show_cursor()?;
+    Ok(())
+}
 /*
 \TODO:
 1.pause/resume ✓
