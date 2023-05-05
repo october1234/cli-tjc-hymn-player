@@ -33,6 +33,7 @@ fn main() {
 
     // Initialize file reader
     let filename = format!("./hymns/{}.mp3", format!("{:0>3}", &raw_filename[..]));
+    println!("{}", std::env::current_dir().unwrap().into_os_string().into_string().unwrap());
     println!("{}", filename);
     let mut f = File::open(&filename).expect("file not found");
     let metadata = std::fs::metadata(&filename).expect("cannot read file metadata");
@@ -66,19 +67,19 @@ fn main() {
         if command == String::from("p") {
             if sl.pause(handle) {
                 sl.set_pause(handle, false);
-                println!("RESUMED!");
+                println!("Resumed!");
             } else {
                 sl.set_pause(handle, true);
-                println!("PAUSED!");
+                println!("Paused!");
             }
         }
         if command == String::from("l") {
             if sl.looping(handle) {
                 sl.set_looping(handle, false);
-                println!("STOPPED LOOPING!");
+                println!("Stopped Looping!");
             } else {
                 sl.set_looping(handle, true);
-                println!("LOOPING!");
+                println!("Looping!");
             }
         }
         if command == String::from("V") {
@@ -86,6 +87,18 @@ fn main() {
         }
         if command == String::from("v") {
             sl.set_volume(handle, sl.volume(handle) - 0.5f32);
+        }
+        if command == String::from("j") && sl.stream_position(handle) - 5.0f64 > 0f64 {
+            println!("Skipping 5 seconds backward ...");
+            if sl.seek(handle, sl.stream_position(handle) - 5.0f64).is_err() {
+                println!("Cannot skip 5 seconds backward");
+            }
+        }
+        if command == String::from("k") && sl.stream_position(handle) + 5.0f64 < wav.length() {
+            println!("Skipping 5 seconds forward ...");
+            if sl.seek(handle, sl.stream_position(handle) + 5.0f64).is_err() {
+                println!("Cannot skip 5 seconds forward");
+            }
         }
     }
 }
