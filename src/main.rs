@@ -65,7 +65,7 @@ fn main() -> Result<(), io::Error> {
     let handle = sl.play(&wav);
 
     // Initialize stdin channel
-    let stdin_channel = spawn_stdin_channel();
+    let command_channel = spawn_command_channel();
 
 
     enable_raw_mode()?;
@@ -185,61 +185,57 @@ fn main() -> Result<(), io::Error> {
             f.render_widget(player_progress, chunks[1]);
         })?;
 
-        if let Event::Key(key) = event::read()? {
-            let command = key.code;
-            if command == KeyCode::Char('p') {
-                if sl.pause(handle) {
-                    sl.set_pause(handle, false);
-                } else {
-                    sl.set_pause(handle, true);
-                }
-            }
-            if command == KeyCode::Char('l') {
-                if sl.looping(handle) {
-                    sl.set_looping(handle, false);
-                } else {
-                    sl.set_looping(handle, true);
-                }
-            }
-            if command == KeyCode::Char('V') {
-                sl.set_volume(handle, sl.volume(handle) + 0.5f32);
-            }
-            if command == KeyCode::Char('v') {
-                sl.set_volume(handle, sl.volume(handle) - 0.5f32);
-            }
-            if command == KeyCode::Char('j') && sl.stream_position(handle) - 5.0f64 > 0f64 {
-                if sl.seek(handle, sl.stream_position(handle) - 5.0f64).is_err() {}
-            }
-            if command == KeyCode::Char('k') && sl.stream_position(handle) + 5.0f64 < wav.length() {
-                if sl.seek(handle, sl.stream_position(handle) + 5.0f64).is_err() {}
-            }
-            if command == KeyCode::Char('q') {
-                return Ok(())
-            }
+        // Read command from channel
+        let mut command: KeyCode = KeyCode::Null;
+        match command_channel.try_recv() {
+            Ok(k) => command = k,
+            Err(TryRecvError::Empty) => {},
+            Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
         }
-
-        // // Read command from channel
-        // let mut command: String = String::new();
-        // match stdin_channel.try_recv() {
-        //     Ok(s) => command = s,
-        //     Err(TryRecvError::Empty) => {},
-        //     Err(TryRecvError::Disconnected) => panic!("Channel disconnected"),
-        // }
         // // Remove \n from command
         // command.pop();
-
+        if command == KeyCode::Char('p') {
+            if sl.pause(handle) {
+                sl.set_pause(handle, false);
+            } else {
+                sl.set_pause(handle, true);
+            }
+        }
+        if command == KeyCode::Char('l') {
+            if sl.looping(handle) {
+                sl.set_looping(handle, false);
+            } else {
+                sl.set_looping(handle, true);
+            }
+        }
+        if command == KeyCode::Char('V') {
+            sl.set_volume(handle, sl.volume(handle) + 0.5f32);
+        }
+        if command == KeyCode::Char('v') {
+            sl.set_volume(handle, sl.volume(handle) - 0.5f32);
+        }
+        if command == KeyCode::Char('j') && sl.stream_position(handle) - 5.0f64 > 0f64 {
+            if sl.seek(handle, sl.stream_position(handle) - 5.0f64).is_err() {}
+        }
+        if command == KeyCode::Char('k') && sl.stream_position(handle) + 5.0f64 < wav.length() {
+            if sl.seek(handle, sl.stream_position(handle) + 5.0f64).is_err() {}
+        }
+        if command == KeyCode::Char('q') {
+            return Ok(())
+        }
     }
 
     close_tui(terminal).expect("Failed to close TUI");
     Ok(())
 }
 
-fn spawn_stdin_channel() -> Receiver<String> {
-    let (tx, rx) = mpsc::channel::<String>();
+fn spawn_command_channel() -> Receiver<KeyCode> {
+    let (tx, rx) = mpsc::channel::<KeyCode>();
     thread::spawn(move || loop {
-        let mut stdin_buffer = String::new();
-        io::stdin().read_line(&mut stdin_buffer).expect("Cannot read command from stdin");
-        tx.send(stdin_buffer).expect("Cannot send command to main thread");
+        if let Event::Key(key) = event::read().unwrap() {
+            let command = key.code;
+            tx.send(command).expect("Cannot send command to main thread");
+        }
     });
     rx
 }
