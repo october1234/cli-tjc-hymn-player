@@ -5,7 +5,7 @@ use std::{
     io::Read,
     sync::mpsc,
     sync::mpsc::Receiver,
-    sync::mpsc::TryRecvError
+    sync::mpsc::TryRecvError, time
 };
 use tui::{
     backend::CrosstermBackend,
@@ -75,7 +75,7 @@ fn main() -> Result<(), io::Error> {
     while sl.voice_count() > 0 {
         // Draws the TUI
         terminal.draw(|f| {
-
+            thread::sleep(time::Duration::from_millis(34));
             // The frame and the title
             let frame = Block::default()
             .title(format!(" Hymn Player: playing hymn {} ", hymn_int))
@@ -125,10 +125,6 @@ fn main() -> Result<(), io::Error> {
             // The stats on the right
             let stats_text = vec![
                 Spans::from(vec![
-                    Span::styled("time elapsed: ",Style::default().fg(Color::LightMagenta)),
-                    Span::raw("00:00"),
-                ]),
-                Spans::from(vec![
                     Span::styled("looping:      ",Style::default().fg(Color::LightMagenta)),
                     Span::raw(if sl.looping(handle) {"yes"} else {"no"}),
                 ]),
@@ -137,8 +133,16 @@ fn main() -> Result<(), io::Error> {
                     Span::raw(if sl.pause(handle) {"yes"} else {"no"}),
                 ]),
                 Spans::from(vec![
+                    Span::styled("volume:       ",Style::default().fg(Color::LightMagenta)),
+                    Span::raw(sl.volume(handle).to_string()),
+                ]),
+                Spans::from(vec![
                     Span::styled("progress:     ",Style::default().fg(Color::LightMagenta)),
-                    Span::raw("00:00 / 00:00"),
+                    Span::raw(format!("{}/{}", f64::trunc(sl.stream_position(handle)) ,f64::trunc(wav.length()))),
+                ]),
+                Spans::from(vec![
+                    Span::styled("time elapsed: ",Style::default().fg(Color::LightMagenta)),
+                    Span::raw(f64::trunc(sl.stream_time(handle)).to_string()),
                 ]),
             ];
             let stats = Paragraph::new(stats_text)
@@ -211,11 +215,11 @@ fn main() -> Result<(), io::Error> {
                 sl.set_looping(handle, true);
             }
         }
-        if command == KeyCode::Char('V') {
-            sl.set_volume(handle, sl.volume(handle) + 0.5f32);
+        if command == KeyCode::Char('V') && sl.volume(handle) < 3f32 {
+            sl.set_volume(handle, sl.volume(handle) + 0.25f32);
         }
-        if command == KeyCode::Char('v') {
-            sl.set_volume(handle, sl.volume(handle) - 0.5f32);
+        if command == KeyCode::Char('v') && sl.volume(handle) > 0f32 {
+            sl.set_volume(handle, sl.volume(handle) - 0.25f32);
         }
         if command == KeyCode::Char('j') && sl.stream_position(handle) - 5.0f64 > 0f64 {
             if sl.seek(handle, sl.stream_position(handle) - 5.0f64).is_err() {}
@@ -224,6 +228,7 @@ fn main() -> Result<(), io::Error> {
             if sl.seek(handle, sl.stream_position(handle) + 5.0f64).is_err() {}
         }
         if command == KeyCode::Char('q') {
+            close_tui(terminal).expect("Failed to close TUI");
             return Ok(())
         }
     }
@@ -271,5 +276,6 @@ fn close_tui(mut terminal: Terminal<CrosstermBackend<io::Stdout>>) -> Result<(),
 6.playlist
 7.shuffle
 8.lyrics
-9.advanced terminal interface
+9.advanced terminal interface ✓
+10.fix small problems
 */
