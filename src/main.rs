@@ -46,7 +46,11 @@ fn main() -> Result<(), io::Error> {
     }
 
     // Initialize file reader
-    let filename = format!("./hymns/{}.mp3", format!("{:0>3}", &raw_filename[..]));
+    let mut dir = std::env::current_exe()?;
+    dir.pop();
+    dir.push("hymns");
+
+    let filename = format!("{}/{}.mp3",dir.display() , format!("{:0>3}", &raw_filename[..]));
     println!("{}", std::env::current_dir().unwrap().into_os_string().into_string().unwrap());
     println!("{}", filename);
     let mut f = File::open(&filename).expect("file not found");
