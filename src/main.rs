@@ -51,8 +51,8 @@ fn main() -> Result<(), io::Error> {
     dir.push("hymns");
 
     let filename = format!("{}/{}.mp3",dir.display() , format!("{:0>3}", &raw_filename[..]));
-    println!("{}", std::env::current_dir().unwrap().into_os_string().into_string().unwrap());
-    println!("{}", filename);
+    // println!("{}", std::env::current_dir().unwrap().into_os_string().into_string().unwrap());
+    // println!("{}", filename);
     let mut f = File::open(&filename).expect("file not found");
     let metadata = std::fs::metadata(&filename).expect("cannot read file metadata");
     let mut buffer = vec![0; metadata.len() as usize];
